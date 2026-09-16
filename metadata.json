@@ -1,0 +1,6 @@
+{
+  "name": "Microfinance Manager",
+  "description": "Comprehensive microfinance and loan management system featuring client registry, loan approval workflows, disbursements, repayments waterfall, double-entry accounting ledger, financial statements, and payroll.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
