@@ -1,4 +1,4 @@
-﻿"""
+"""
 One-off repair script for a loan stuck exactly like LN-00152: it already has
 a disbursement record and a repayment schedule (so it genuinely was
 disbursed), but an error partway through the old disburse_loan() left it
