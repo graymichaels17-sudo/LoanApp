@@ -39,7 +39,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   onNavigate,
 }) => {
   const { currentUser, logout, systemDate } = useApp();
-  const { theme, toggleTheme } = useTheme();
+  const { theme, setTheme } = useTheme();
 
   const [isActionsDropdownOpen, setIsActionsDropdownOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -190,18 +190,40 @@ export const Topbar: React.FC<TopbarProps> = ({
           <HelpCircle className="w-4 h-4" />
         </button>
 
-        {/* Theme Switcher Toggle */}
-        <button
-          onClick={toggleTheme}
-          className="p-2 rounded-xl text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-          title={theme === 'dark' ? 'Switch to Clean Light Theme' : 'Switch to Dark Theme'}
+        {/* Theme Picker: Segmented Light vs Dark Control */}
+        <div
+          id="theme-picker"
+          className="flex items-center p-0.5 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-2xs"
+          role="group"
+          aria-label="Color theme switcher"
         >
-          {theme === 'dark' ? (
-            <Sun className="w-4 h-4 text-amber-400" />
-          ) : (
-            <Moon className="w-4 h-4 text-slate-600" />
-          )}
-        </button>
+          <button
+            id="theme-pick-light"
+            onClick={() => setTheme('light')}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              theme === 'light'
+                ? 'bg-white text-slate-900 shadow-xs border border-slate-200/60'
+                : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+            }`}
+            title="Switch to Light Theme"
+          >
+            <Sun className={`w-3.5 h-3.5 ${theme === 'light' ? 'text-amber-500 fill-amber-500/20' : 'text-slate-400'}`} />
+            <span className="hidden sm:inline">Light</span>
+          </button>
+          <button
+            id="theme-pick-dark"
+            onClick={() => setTheme('dark')}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              theme === 'dark'
+                ? 'bg-slate-800 text-white shadow-xs border border-slate-700/60'
+                : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+            }`}
+            title="Switch to Dark Theme"
+          >
+            <Moon className={`w-3.5 h-3.5 ${theme === 'dark' ? 'text-blue-400 fill-blue-400/20' : 'text-slate-400'}`} />
+            <span className="hidden sm:inline">Dark</span>
+          </button>
+        </div>
 
         {/* User Menu */}
         {currentUser && (
@@ -230,12 +252,41 @@ export const Topbar: React.FC<TopbarProps> = ({
             </button>
 
             {isUserMenuOpen && (
-              <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl p-1.5 z-50 text-xs animate-in fade-in zoom-in-95">
+              <div className="absolute right-0 mt-2 w-52 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl p-1.5 z-50 text-xs animate-in fade-in zoom-in-95">
                 <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-800 mb-1">
                   <p className="font-bold text-slate-800 dark:text-white truncate">{currentUser.fullName}</p>
                   <p className="text-[10px] text-slate-400 capitalize font-mono">
                     {currentUser.role.replace('_', ' ')}
                   </p>
+                </div>
+
+                {/* Theme Selector in dropdown */}
+                <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-800 mb-1">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Appearance</p>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      onClick={() => setTheme('light')}
+                      className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all ${
+                        theme === 'light'
+                          ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800'
+                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <Sun className="w-3.5 h-3.5 text-amber-500" />
+                      <span>Light</span>
+                    </button>
+                    <button
+                      onClick={() => setTheme('dark')}
+                      className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all ${
+                        theme === 'dark'
+                          ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800'
+                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <Moon className="w-3.5 h-3.5 text-blue-400" />
+                      <span>Dark</span>
+                    </button>
+                  </div>
                 </div>
 
                 <button

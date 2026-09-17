@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { useApp } from './context/AppContext';
 import { Sidebar, ActiveTab } from './components/layout/Sidebar';
 import { Topbar } from './components/layout/Topbar';
@@ -105,16 +106,26 @@ export const App: React.FC = () => {
         {/* Scrollable View Container */}
         <main id="main-content" className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
           <div className="max-w-7xl mx-auto pb-12">
-            {activeTab === 'dashboard' && <DashboardView onNavigate={setActiveTab} />}
-            {activeTab === 'clients' && <ClientsView />}
-            {activeTab === 'loans' && <LoansView />}
-            {activeTab === 'rollovers' && <RolloversView />}
-            {activeTab === 'bad_debts' && <BadDebtsView />}
-            {activeTab === 'reports' && <ReportsView />}
-            {activeTab === 'accounting' && <AccountingView />}
-            {activeTab === 'payroll' && <PayrollView />}
-            {activeTab === 'sqlite' && <SqliteView />}
-            {activeTab === 'settings' && <SettingsView />}
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={activeTab}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.16, ease: 'easeOut' }}
+              >
+                {activeTab === 'dashboard' && <DashboardView onNavigate={setActiveTab} />}
+                {activeTab === 'clients' && <ClientsView />}
+                {activeTab === 'loans' && <LoansView />}
+                {activeTab === 'rollovers' && <RolloversView />}
+                {activeTab === 'bad_debts' && <BadDebtsView />}
+                {activeTab === 'reports' && <ReportsView />}
+                {activeTab === 'accounting' && <AccountingView />}
+                {activeTab === 'payroll' && <PayrollView />}
+                {activeTab === 'sqlite' && <SqliteView />}
+                {activeTab === 'settings' && <SettingsView onNavigate={setActiveTab} />}
+              </motion.div>
+            </AnimatePresence>
           </div>
         </main>
       </div>

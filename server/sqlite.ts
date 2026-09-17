@@ -2,7 +2,7 @@ import initSqlJs, { Database, QueryExecResult } from 'sql.js';
 import fs from 'fs';
 import path from 'path';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+const DATA_DIR = process.env.VERCEL ? path.join('/tmp', 'data') : path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'microfinance.sqlite');
 const SCHEMA_FILE = path.join(process.cwd(), 'app', 'schema.sql');
 
@@ -14,8 +14,12 @@ export async function getSqlite(): Promise<Database> {
     return dbInstance;
   }
 
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+  } catch (err: any) {
+    console.warn('[SQLite] Notice on data directory creation (normal in serverless):', err.message);
   }
 
   const wasmPath = path.join(process.cwd(), 'node_modules', 'sql.js', 'dist');
@@ -51,8 +55,8 @@ export function persistDatabase(): void {
     const buffer = Buffer.from(data);
     fs.writeFileSync(DB_FILE, buffer);
     console.log(`[SQLite] Persisted database to ${DB_FILE} (${buffer.byteLength} bytes)`);
-  } catch (err) {
-    console.error(`[SQLite] Error persisting database to disk:`, err);
+  } catch (err: any) {
+    console.warn(`[SQLite] Notice: database file write skipped in serverless environment:`, err.message);
   }
 }
 
@@ -380,56 +384,6 @@ async function applySchemaAndSeed(db: Database) {
       (4, 'Emergency Fast Cash', 'flat', 20.0, 'month', 5.0, 10.0, 3, 'weekly', 'weeks', 1);
   `);
 
-  // Seed Clients
-  db.run(`
-    INSERT OR IGNORE INTO clients (id, client_no, first_name, last_name, national_id, gender, location, phone, address, occupation, average_income, guarantor, guarantor_phone, date_registered, status) VALUES
-      (1, 'CL-00001', 'Farai', 'Chikore', '63-1284920-F-42', 'Male', 'Harare Central', '+263 77 212 3456', '14 Samora Machel Ave, Harare', 'Retail Merchant', 1200, 'Tafadzwa Chikore', '+263 77 987 6543', '2026-01-10', 'Active'),
-      (2, 'CL-00002', 'Chipo', 'Gumbo', '08-4920193-K-08', 'Female', 'Bulawayo CBD', '+263 71 834 5678', '88 JMN Nkomo St, Bulawayo', 'Poultry Producer', 850, 'Thulani Gumbo', '+263 71 445 5667', '2026-01-15', 'Active'),
-      (3, 'CL-00003', 'Tinashe', 'Mukamuri', '29-5839201-B-29', 'Male', 'Mutare Main', '+263 73 999 1122', '42 Main Street, Mutare', 'Hardware Store Owner', 2100, 'Kudakwashe Mukamuri', '+263 73 888 2233', '2026-02-01', 'Active'),
-      (4, 'CL-00004', 'Ruvimbo', 'Mtetwa', '47-3829104-M-47', 'Female', 'Chitungwiza Unit L', '+263 77 654 3210', '12Makoni Centre, Chitungwiza', 'Fashion Boutique Owner', 750, 'Garikai Mtetwa', '+263 77 123 4567', '2026-02-12', 'Active'),
-      (5, 'CL-00005', 'Simbarashe', 'Mutasa', '15-9920134-Z-15', 'Male', 'Gweru Town', '+263 78 456 7890', '5 Robert Mugabe Way, Gweru', 'Grain Wholesaler', 1600, 'Anesu Mutasa', '+263 78 111 2233', '2026-02-20', 'Active');
-  `);
-
-  // Seed Loans
-  db.run(`
-    INSERT OR IGNORE INTO loans (id, loan_no, client_id, product_id, principal, interest_rate, interest_method, rate_period, term_months, repayment_frequency, application_date, disbursement_date, first_due_date, maturity_date, admin_fee, status, approval_status, purpose, collateral) VALUES
-      (1, 'LN-00001', 1, 1, 1000, 15.0, 'flat', 'month', 4, 'monthly', '2026-06-01', '2026-06-02', '2026-07-02', '2026-10-02', 30, 'Active', 'Approved', 'Inventory restocking', 'Commercial Refrigeration Unit'),
-      (2, 'LN-00002', 2, 2, 2500, 12.0, 'reducing_balance', 'month', 6, 'monthly', '2026-07-10', '2026-07-12', '2026-08-12', '2027-01-12', 62.5, 'Active', 'Approved', 'Layer chick feed batch purchase', 'Toyota Hilux 2012 Logbook'),
-      (3, 'LN-00003', 3, 3, 5000, 10.0, 'interest_only_balloon', 'month', 6, 'monthly', '2026-08-01', '2026-08-05', '2026-09-05', '2027-02-05', 200, 'Active', 'Approved', 'Irrigation pump installation', 'Title Deed Stand #402 Mutare'),
-      (4, 'LN-00004', 4, 4, 300, 20.0, 'flat', 'month', 1, 'weekly', '2026-09-01', '2026-09-02', '2026-09-09', '2026-09-30', 15, 'Active', 'Approved', 'Fabric bulk import', 'Industrial Sewing Machines (x2)'),
-      (5, 'LN-00005', 5, 1, 1500, 15.0, 'flat', 'month', 3, 'monthly', '2026-09-10', NULL, NULL, NULL, 45, 'Pending', 'Pending', 'Silo maintenance', 'Grain sorting equipment');
-  `);
-
-  // Seed Repayment Schedules for LN-00001
-  db.run(`
-    INSERT OR IGNORE INTO repayment_schedule (id, loan_id, installment_no, due_date, principal_due, interest_due, total_due, principal_paid, interest_paid, penalty_charged, penalty_paid, status) VALUES
-      (1, 1, 1, '2026-07-02', 250, 150, 400, 250, 150, 0, 0, 'Paid'),
-      (2, 1, 2, '2026-08-02', 250, 150, 400, 250, 150, 0, 0, 'Paid'),
-      (3, 1, 3, '2026-09-02', 250, 150, 400, 100, 150, 10, 0, 'PartiallyPaid'),
-      (4, 1, 4, '2026-10-02', 250, 150, 400, 0, 0, 0, 0, 'Pending');
-  `);
-
-  // Seed Repayment Schedules for LN-00002
-  db.run(`
-    INSERT OR IGNORE INTO repayment_schedule (id, loan_id, installment_no, due_date, principal_due, interest_due, total_due, principal_paid, interest_paid, penalty_charged, penalty_paid, status) VALUES
-      (5, 2, 1, '2026-08-12', 396.67, 300, 696.67, 396.67, 300, 0, 0, 'Paid'),
-      (6, 2, 2, '2026-09-12', 400.67, 252.4, 653.07, 0, 0, 0, 0, 'Pending'),
-      (7, 2, 3, '2026-10-12', 405.47, 204.32, 609.79, 0, 0, 0, 0, 'Pending'),
-      (8, 2, 4, '2026-11-12', 410.34, 155.66, 566.00, 0, 0, 0, 0, 'Pending'),
-      (9, 2, 5, '2026-12-12', 415.26, 106.42, 521.68, 0, 0, 0, 0, 'Pending'),
-      (10, 2, 6, '2027-01-12', 420.24, 56.59, 476.83, 0, 0, 0, 0, 'Pending');
-  `);
-
-  // Seed Employees
-  db.run(`
-    INSERT OR IGNORE INTO employees (id, employee_no, first_name, last_name, national_id, job_title, department, hire_date, basic_salary, bank_name, bank_account_no, nssa_number, tax_number, active) VALUES
-      (1, 'EMP-001', 'Tatenda', 'Marufu', '63-2940219-L-63', 'Managing Director', 'Executive', '2025-01-01', 2500, 'Stanbic Bank', '9140001928341', 'NSSA-884920', 'ITX-993021', 1),
-      (2, 'EMP-002', 'Nyasha', 'Ndlovu', '08-1829402-H-08', 'Head of Credit & Risk', 'Credit', '2025-02-15', 1800, 'CABS', '1004928192', 'NSSA-772910', 'ITX-882910', 1),
-      (3, 'EMP-003', 'Kudzai', 'Bande', '29-3829104-D-29', 'Senior Accountant', 'Finance', '2025-03-01', 1400, 'CBZ Bank', '029384910293', 'NSSA-662918', 'ITX-773918', 1),
-      (4, 'EMP-004', 'Paidamoyo', 'Zuze', '47-9283019-S-47', 'Senior Loan Officer', 'Operations', '2025-04-01', 950, 'FBC Bank', '30291829384', 'NSSA-551928', 'ITX-662819', 1),
-      (5, 'EMP-005', 'Tariro', 'Mhike', '15-4920192-P-15', 'Teller / Cashier', 'Treasury', '2025-06-01', 650, 'Stanbic Bank', '9140003829102', 'NSSA-441829', 'ITX-551728', 1);
-  `);
-
   // Seed Company Details
   db.run(`
     INSERT OR REPLACE INTO company_details (key, value) VALUES
@@ -443,5 +397,5 @@ async function applySchemaAndSeed(db: Database) {
       ('system_date', '2026-09-16');
   `);
 
-  console.log(`[SQLite] Schema and seed data successfully initialized`);
+  console.log(`[SQLite] Schema successfully initialized with clean slate`);
 }

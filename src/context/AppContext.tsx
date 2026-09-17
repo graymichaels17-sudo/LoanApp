@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
   Account,
   BadDebt,
@@ -38,7 +38,7 @@ import {
 import { allocateRepaymentWaterfall, calculateSchedule, nextDueDate } from '../utils/amortization';
 import { roundMoney } from '../utils/money';
 
-const STORAGE_KEY = 'microfinance_manager_store_v1';
+const STORAGE_KEY = 'microfinance_manager_store_v2';
 
 interface AppContextType {
   currentUser: User | null;
@@ -60,6 +60,12 @@ interface AppContextType {
   employees: Employee[];
   settings: SystemSettings;
   systemDate: string;
+
+  // Multi-user online cloud synchronization
+  cloudSyncStatus: 'synced' | 'syncing' | 'offline' | 'error';
+  lastCloudSync: string | null;
+  refreshFromCloud: () => Promise<void>;
+  isTursoActive: boolean;
 
   // Actions
   login: (username: string) => boolean;
@@ -112,6 +118,8 @@ interface AppContextType {
   }) => void;
   addJournalEntry: (entry: Omit<JournalEntry, 'id' | 'createdAt'>) => boolean;
   addUser: (userData: Omit<User, 'id' | 'createdAt'>) => void;
+  bulkImportClients: (newClients: Array<Omit<Client, 'id' | 'clientNo' | 'createdAt'>>) => number;
+  bulkImportLoans: (newLoans: any[]) => number;
   addEmployee: (emp: Omit<Employee, 'id'>) => void;
   updateEmployee: (id: number, emp: Partial<Employee>) => void;
   addLocation: (name: string) => void;
@@ -173,8 +181,93 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [state, setState] = useState(loadInitial);
   const systemDate = '2026-09-16';
 
+  // Multi-user online cloud synchronization state
+  const [cloudSyncStatus, setCloudSyncStatus] = useState<'synced' | 'syncing' | 'offline' | 'error'>('syncing');
+  const [lastCloudSync, setLastCloudSync] = useState<string | null>(null);
+  const [isTursoActive, setIsTursoActive] = useState<boolean>(false);
+  const isHydratingFromCloud = useRef(false);
+  const saveTimeoutRef = useRef<any>(null);
+
+  // Fetch central synchronized state from Turso Cloud / Backend
+  const fetchCloudState = async (silently = false) => {
+    try {
+      if (!silently) setCloudSyncStatus('syncing');
+      const res = await fetch('/api/state');
+      if (res.ok) {
+        const result = await res.json();
+        setIsTursoActive(!!result.tursoConnected);
+        if (result.success && result.data && Array.isArray(result.data.loans) && Array.isArray(result.data.users)) {
+          isHydratingFromCloud.current = true;
+          setState((prev: any) => ({
+            ...result.data,
+            // Retain active local user login session
+            currentUser: prev.currentUser || result.data.currentUser || INITIAL_USERS[0],
+          }));
+          setLastCloudSync(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+          setCloudSyncStatus('synced');
+        } else {
+          // Cloud database empty or unseeded - initialize it with initial full state
+          await pushStateToCloud(state);
+          setCloudSyncStatus('synced');
+        }
+      } else {
+        setCloudSyncStatus('offline');
+      }
+    } catch {
+      setCloudSyncStatus('offline');
+    }
+  };
+
+  const pushStateToCloud = async (stateToSave: any) => {
+    try {
+      setCloudSyncStatus('syncing');
+      const res = await fetch('/api/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: stateToSave }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setIsTursoActive(!!data.tursoConnected);
+        setLastCloudSync(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+        setCloudSyncStatus('synced');
+      } else {
+        setCloudSyncStatus('error');
+      }
+    } catch {
+      setCloudSyncStatus('offline');
+    }
+  };
+
+  // Initial load and background polling for multi-user real-time changes
+  useEffect(() => {
+    fetchCloudState();
+
+    // Poll every 12 seconds so if other officers add loans/repayments, all screens sync
+    const pollInterval = setInterval(() => {
+      fetchCloudState(true);
+    }, 12000);
+
+    return () => clearInterval(pollInterval);
+  }, []);
+
+  // Save changes locally and automatically push to Turso Cloud
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+
+    if (isHydratingFromCloud.current) {
+      isHydratingFromCloud.current = false;
+      return;
+    }
+
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => {
+      pushStateToCloud(state);
+    }, 600);
+
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
   }, [state]);
 
   const login = (username: string): boolean => {
@@ -853,6 +946,68 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setState((prev: any) => ({ ...prev, users: [...prev.users, newUser] }));
   };
 
+  const bulkImportClients = (newClientsData: Array<Omit<Client, 'id' | 'clientNo' | 'createdAt'>>): number => {
+    if (!newClientsData || newClientsData.length === 0) return 0;
+
+    let highestId = state.clients.length > 0 ? Math.max(...state.clients.map((c: Client) => c.id)) : 0;
+    const addedClients: Client[] = newClientsData.map((data) => {
+      highestId += 1;
+      return {
+        ...data,
+        id: highestId,
+        clientNo: `CL-${String(highestId).padStart(5, '0')}`,
+        createdAt: systemDate,
+      };
+    });
+
+    setState((prev: any) => ({
+      ...prev,
+      clients: [...addedClients, ...prev.clients],
+    }));
+
+    return addedClients.length;
+  };
+
+  const bulkImportLoans = (newLoansData: any[]): number => {
+    if (!newLoansData || newLoansData.length === 0) return 0;
+
+    let highestId = state.loans.length > 0 ? Math.max(...state.loans.map((l: Loan) => l.id)) : 0;
+    const addedLoans: Loan[] = newLoansData.map((data) => {
+      highestId += 1;
+      const product = state.loanProducts.find((p: LoanProduct) => p.id === data.productId);
+      const adminFeePct = product ? product.adminFeePct : 2.5;
+      const adminFee = roundMoney(data.principal * (adminFeePct / 100));
+
+      return {
+        id: highestId,
+        loanNo: `LN-${String(highestId).padStart(5, '0')}`,
+        clientId: data.clientId,
+        productId: data.productId,
+        principal: data.principal,
+        interestRate: data.interestRate,
+        interestMethod: data.interestMethod || 'flat',
+        ratePeriod: data.ratePeriod || 'month',
+        termMonths: data.termMonths || 3,
+        repaymentFrequency: data.repaymentFrequency || 'monthly',
+        applicationDate: data.applicationDate || systemDate,
+        adminFee,
+        status: 'Pending',
+        approvalStatus: 'Pending',
+        purpose: data.purpose || 'Working Capital',
+        collateral: data.collateral,
+        createdBy: state.currentUser?.id,
+        createdAt: systemDate,
+      };
+    });
+
+    setState((prev: any) => ({
+      ...prev,
+      loans: [...addedLoans, ...prev.loans],
+    }));
+
+    return addedLoans.length;
+  };
+
   const addEmployee = (emp: Omit<Employee, 'id'>) => {
     const nextId = state.employees.length > 0 ? Math.max(...state.employees.map((e: Employee) => e.id)) + 1 : 1;
     const newEmp: Employee = { ...emp, id: nextId };
@@ -930,6 +1085,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value={{
         ...state,
         systemDate,
+        cloudSyncStatus,
+        lastCloudSync,
+        refreshFromCloud: () => fetchCloudState(false),
+        isTursoActive,
         login,
         logout,
         addClient,
