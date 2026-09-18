@@ -10,6 +10,8 @@ import {
   Coins,
   ArrowRight,
   Edit2,
+  Upload,
+  Download,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Client } from '../../types';
@@ -17,6 +19,7 @@ import { formatMoney } from '../../utils/money';
 import { Header } from '../common/Header';
 import { StatusBadge } from '../common/Badge';
 import { Modal } from '../common/Modal';
+import { DataImportExportModal } from '../common/DataImportExportModal';
 
 interface ClientsViewProps {
   onApplyLoanForClient?: (clientId: number) => void;
@@ -36,6 +39,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [isNewModalOpen, setIsNewModalOpen] = useState(defaultOpenNew);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isImportExportModalOpen, setIsImportExportModalOpen] = useState(false);
+  const [importExportTab, setImportExportTab] = useState<'export' | 'import'>('export');
 
   // New Client Form State
   const [formData, setFormData] = useState({
@@ -188,17 +193,43 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         title="Client Registry"
         subtitle="Manage borrowers, personal identification, KYC documentation, and credit histories"
         actions={
-          <button
-            id="btn-register-client"
-            onClick={() => {
-              resetForm();
-              setIsNewModalOpen(true);
-            }}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors"
-          >
-            <UserPlus className="w-4 h-4" />
-            Register New Client
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setImportExportTab('import');
+                setIsImportExportModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors shadow-2xs"
+              title="Import clients from Excel spreadsheet"
+            >
+              <Upload className="w-4 h-4 text-blue-500" />
+              <span>Import Excel</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setImportExportTab('export');
+                setIsImportExportModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors shadow-2xs"
+              title="Export clients to Excel or PDF"
+            >
+              <Download className="w-4 h-4 text-emerald-500" />
+              <span>Export</span>
+            </button>
+
+            <button
+              id="btn-register-client"
+              onClick={() => {
+                resetForm();
+                setIsNewModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors"
+            >
+              <UserPlus className="w-4 h-4" />
+              Register New Client
+            </button>
+          </div>
         }
       />
 
@@ -772,6 +803,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           </div>
         </form>
       </Modal>
+
+      {/* Data Center: Import & Export Modal */}
+      <DataImportExportModal
+        isOpen={isImportExportModalOpen}
+        onClose={() => setIsImportExportModalOpen(false)}
+        initialTab={importExportTab}
+        initialSection="clients"
+      />
     </div>
   );
 };

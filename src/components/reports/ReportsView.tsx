@@ -1,17 +1,19 @@
 import React, { useState, useMemo } from 'react';
 import {
-  Download,
   AlertTriangle,
   TrendingUp,
   Layers,
   Coins,
+  FileSpreadsheet,
+  FileText,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { formatMoney, roundMoney } from '../../utils/money';
 import { Header } from '../common/Header';
+import { downloadExcelWorkbook, downloadPDFReport } from '../../utils/exportImport';
 
 export const ReportsView: React.FC = () => {
-  const { loans, clients, schedules, disbursements, repayments, systemDate } = useApp();
+  const { loans, clients, schedules, disbursements, repayments, settings, systemDate } = useApp();
 
   const [activeReport, setActiveReport] = useState<'par' | 'disbursements' | 'collections' | 'loan_book'>('par');
 
@@ -93,44 +95,170 @@ export const ReportsView: React.FC = () => {
     };
   }, [loans, schedules, clients, systemDate]);
 
-  // Export CSV Helper
-  const handleExportCSV = () => {
-    let csvContent = 'data:text/csv;charset=utf-8,';
-
+  // Export Excel Helper
+  const handleExportExcel = () => {
     if (activeReport === 'par') {
-      csvContent += 'Loan #,Borrower,Location,Disbursed,Maturity,Principal Outstanding,Total Outstanding,Days Overdue,PAR Bucket\n';
-      parAnalysis.loans.forEach((row) => {
-        csvContent += `"${row.loanNo}","${row.clientName}","${row.location}","${row.disbursedDate}","${row.maturityDate}",${row.outstandingPrincipal},${row.totalOutstanding},${row.daysOverdue},"${row.bucket}"\n`;
-      });
+      const data = parAnalysis.loans.map((row) => ({
+        'Loan #': row.loanNo,
+        'Borrower': row.clientName,
+        'Location': row.location,
+        'Disbursed Date': row.disbursedDate,
+        'Maturity Date': row.maturityDate,
+        'Principal Outstanding': row.outstandingPrincipal,
+        'Total Outstanding': row.totalOutstanding,
+        'Days Overdue': row.daysOverdue,
+        'PAR Bucket': row.bucket,
+      }));
+      downloadExcelWorkbook(`par_aging_analysis_${systemDate}`, [{ name: 'PAR Aging Analysis', data }]);
     } else if (activeReport === 'disbursements') {
-      csvContent += 'Date,Loan #,Borrower,Amount,Method,Reference,Notes\n';
-      disbursements.forEach((d) => {
+      const data = disbursements.map((d) => {
         const l = loans.find((item) => item.id === d.loanId);
         const c = l ? clients.find((client) => client.id === l.clientId) : null;
-        csvContent += `"${d.disbursementDate}","${l?.loanNo || d.loanId}","${c ? c.firstName + ' ' + c.lastName : ''}",${d.amount},"${d.method}","${d.reference || ''}","${d.notes || ''}"\n`;
+        return {
+          'Date': d.disbursementDate,
+          'Loan #': l?.loanNo || d.loanId,
+          'Borrower': c ? `${c.firstName} ${c.lastName}` : '-',
+          'Amount': d.amount,
+          'Method': d.method,
+          'Reference': d.reference || '-',
+          'Notes': d.notes || '-',
+        };
       });
+      downloadExcelWorkbook(`disbursements_register_${systemDate}`, [{ name: 'Disbursements Register', data }]);
     } else if (activeReport === 'collections') {
-      csvContent += 'Date,Loan #,Borrower,Total Amount,Principal Paid,Interest Paid,Penalty Paid,Method,Reference\n';
-      repayments.forEach((r) => {
+      const data = repayments.map((r) => {
         const l = loans.find((item) => item.id === r.loanId);
         const c = l ? clients.find((client) => client.id === l.clientId) : null;
-        csvContent += `"${r.paymentDate}","${l?.loanNo || r.loanId}","${c ? c.firstName + ' ' + c.lastName : ''}",${r.amount},${r.principalPaid},${r.interestPaid},${r.penaltyPaid},"${r.method}","${r.reference || ''}"\n`;
+        return {
+          'Date': r.paymentDate,
+          'Loan #': l?.loanNo || r.loanId,
+          'Borrower': c ? `${c.firstName} ${c.lastName}` : '-',
+          'Total Amount': r.amount,
+          'Principal Paid': r.principalPaid,
+          'Interest Paid': r.interestPaid,
+          'Penalty Paid': r.penaltyPaid,
+          'Method': r.method,
+          'Reference': r.reference || '-',
+        };
+      });
+      downloadExcelWorkbook(`collections_register_${systemDate}`, [{ name: 'Collections Register', data }]);
+    } else {
+      const data = loans.map((l) => {
+        const c = clients.find((client) => client.id === l.clientId);
+        return {
+          'Loan #': l.loanNo,
+          'Borrower': c ? `${c.firstName} ${c.lastName}` : '-',
+          'Principal': l.principal,
+          'Method': l.interestMethod,
+          'Interest Rate': `${l.interestRate}%`,
+          'Term': `${l.termMonths} ${l.repaymentFrequency}`,
+          'Status': l.status,
+          'Application Date': l.applicationDate,
+          'Disbursement Date': l.disbursementDate || '-',
+        };
+      });
+      downloadExcelWorkbook(`loan_book_${systemDate}`, [{ name: 'Comprehensive Loan Book', data }]);
+    }
+  };
+
+  // Export PDF Helper
+  const handleExportPDF = () => {
+    if (activeReport === 'par') {
+      const columns = ['Loan #', 'Borrower', 'Location', 'Principal O/S', 'Total O/S', 'Days', 'PAR Bucket'];
+      const rows = parAnalysis.loans.map((r) => [
+        r.loanNo,
+        r.clientName,
+        r.location,
+        formatMoney(r.outstandingPrincipal),
+        formatMoney(r.totalOutstanding),
+        r.daysOverdue.toString(),
+        r.bucket,
+      ]);
+      downloadPDFReport({
+        title: 'Portfolio at Risk (PAR) Aging Analysis',
+        subtitle: `Audited PAR position as of system date ${systemDate}`,
+        companyName: settings.companyName,
+        systemDate,
+        filename: `par_aging_analysis_${systemDate}.pdf`,
+        columns,
+        rows,
+        summaryCards: [
+          { label: 'Total Portfolio', value: formatMoney(parAnalysis.totalPortfolio) },
+          { label: 'Portfolio at Risk', value: formatMoney(parAnalysis.totalAtRisk) },
+          { label: 'PAR Rate %', value: `${parAnalysis.parRate.toFixed(2)}%` },
+        ],
+      });
+    } else if (activeReport === 'disbursements') {
+      const columns = ['Date', 'Loan #', 'Borrower', 'Disbursed Amount', 'Method', 'Reference'];
+      const rows = disbursements.map((d) => {
+        const l = loans.find((item) => item.id === d.loanId);
+        const c = l ? clients.find((client) => client.id === l.clientId) : null;
+        return [
+          d.disbursementDate,
+          l?.loanNo || d.loanId.toString(),
+          c ? `${c.firstName} ${c.lastName}` : '-',
+          formatMoney(d.amount),
+          d.method,
+          d.reference || '-',
+        ];
+      });
+      downloadPDFReport({
+        title: 'Loan Disbursements Register',
+        subtitle: `Verified listing of ${disbursements.length} disbursements`,
+        companyName: settings.companyName,
+        systemDate,
+        filename: `disbursements_report_${systemDate}.pdf`,
+        columns,
+        rows,
+      });
+    } else if (activeReport === 'collections') {
+      const columns = ['Date', 'Loan #', 'Borrower', 'Total Paid', 'Principal', 'Interest', 'Method'];
+      const rows = repayments.map((r) => {
+        const l = loans.find((item) => item.id === r.loanId);
+        const c = l ? clients.find((client) => client.id === l.clientId) : null;
+        return [
+          r.paymentDate,
+          l?.loanNo || r.loanId.toString(),
+          c ? `${c.firstName} ${c.lastName}` : '-',
+          formatMoney(r.amount),
+          formatMoney(r.principalPaid),
+          formatMoney(r.interestPaid),
+          r.method,
+        ];
+      });
+      downloadPDFReport({
+        title: 'Loan Collections & Repayments Register',
+        subtitle: `Verified listing of ${repayments.length} collection receipts`,
+        companyName: settings.companyName,
+        systemDate,
+        filename: `collections_report_${systemDate}.pdf`,
+        columns,
+        rows,
       });
     } else {
-      csvContent += 'Loan #,Borrower,Principal,Method,Rate,Term,Status,Application Date,Disbursement Date\n';
-      loans.forEach((l) => {
+      const columns = ['Loan #', 'Borrower', 'Principal', 'Rate', 'Term', 'Status', 'Disbursed'];
+      const rows = loans.map((l) => {
         const c = clients.find((client) => client.id === l.clientId);
-        csvContent += `"${l.loanNo}","${c ? c.firstName + ' ' + c.lastName : ''}",${l.principal},"${l.interestMethod}",${l.interestRate},"${l.termMonths} ${l.repaymentFrequency}","${l.status}","${l.applicationDate}","${l.disbursementDate || ''}"\n`;
+        return [
+          l.loanNo,
+          c ? `${c.firstName} ${c.lastName}` : '-',
+          formatMoney(l.principal),
+          `${l.interestRate}%`,
+          `${l.termMonths} mos`,
+          l.status,
+          l.disbursementDate || '-',
+        ];
+      });
+      downloadPDFReport({
+        title: 'Comprehensive Master Loan Book',
+        subtitle: `Portfolio registry of ${loans.length} originated loans`,
+        companyName: settings.companyName,
+        systemDate,
+        filename: `loan_book_${systemDate}.pdf`,
+        columns,
+        rows,
       });
     }
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `microfinance_${activeReport}_report_${systemDate}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
 
   return (
@@ -139,14 +267,27 @@ export const ReportsView: React.FC = () => {
         title="Portfolio Analytics & Statutory Reports"
         subtitle="Portfolio at Risk (PAR) aging analysis, collection registers, disbursements, and loan book exports"
         actions={
-          <button
-            id="btn-export-csv"
-            onClick={handleExportCSV}
-            className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors"
-          >
-            <Download className="w-4 h-4" />
-            Export CSV Download
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              id="btn-export-excel"
+              onClick={handleExportExcel}
+              className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors"
+              title="Download report as formatted Microsoft Excel spreadsheet"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              <span>Export Excel</span>
+            </button>
+
+            <button
+              id="btn-export-pdf"
+              onClick={handleExportPDF}
+              className="flex items-center gap-1.5 px-3 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors"
+              title="Download report as formatted printable PDF document"
+            >
+              <FileText className="w-4 h-4" />
+              <span>Export PDF</span>
+            </button>
+          </div>
         }
       />
 

@@ -90,6 +90,14 @@ export async function createApp(): Promise<Express> {
   app.use(express.json({ limit: '50mb' }));
   app.use(express.raw({ type: 'application/x-sqlite3', limit: '50mb' }));
 
+  // Ensure req.url has /api prefix if stripped by Vercel or other proxies
+  app.use((req, _res, next) => {
+    if (req.url && !req.url.startsWith('/api') && req.url !== '/') {
+      req.url = `/api${req.url}`;
+    }
+    next();
+  });
+
   // ==========================================
   // Database System APIs (SQLite & Turso Cloud)
   // ==========================================
@@ -118,6 +126,8 @@ export async function createApp(): Promise<Express> {
       configured: config.configured,
       maskedUrl: config.maskedUrl,
       mode: config.configured ? 'turso' : 'local_sqlite',
+      activeUrl: config.url || null,
+      vercelSetupNeeded: !config.configured,
     });
   });
 

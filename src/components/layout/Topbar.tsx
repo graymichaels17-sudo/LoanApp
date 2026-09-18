@@ -14,10 +14,14 @@ import {
   LogOut,
   Building,
   ChevronDown,
+  Cloud,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useTheme } from '../../context/ThemeContext';
 import { ActiveTab } from './Sidebar';
+import { CloudSyncModal } from '../common/CloudSyncModal';
+import { DataImportExportModal } from '../common/DataImportExportModal';
 
 interface TopbarProps {
   onOpenCommandPalette: () => void;
@@ -38,11 +42,13 @@ export const Topbar: React.FC<TopbarProps> = ({
   onToggleMobileSidebar,
   onNavigate,
 }) => {
-  const { currentUser, logout, systemDate } = useApp();
+  const { currentUser, logout, systemDate, isTursoActive } = useApp();
   const { theme, setTheme } = useTheme();
 
   const [isActionsDropdownOpen, setIsActionsDropdownOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isCloudSyncOpen, setIsCloudSyncOpen] = useState(false);
+  const [isImportExportOpen, setIsImportExportOpen] = useState(false);
 
   const actionsRef = useRef<HTMLDivElement>(null);
   const userRef = useRef<HTMLDivElement>(null);
@@ -94,15 +100,39 @@ export const Topbar: React.FC<TopbarProps> = ({
 
       {/* Right: Telemetry, Quick Actions, Theme, User */}
       <div className="flex items-center gap-2 sm:gap-2.5">
+        {/* Multi-Device Cloud Sync Status Pill */}
+        <button
+          onClick={() => setIsCloudSyncOpen(true)}
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
+            isTursoActive
+              ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200/80 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'
+              : 'bg-amber-50 dark:bg-amber-950/40 border-amber-200/80 dark:border-amber-800/60 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40'
+          }`}
+          title={isTursoActive ? 'Turso Cloud Active: Multi-device sync enabled. Click to view status.' : 'Multi-device sync offline: Click to view Vercel environment setup instructions.'}
+        >
+          <span className={`w-2 h-2 rounded-full ${isTursoActive ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+          <Cloud className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">{isTursoActive ? 'Cloud Synced' : 'Multi-Device Sync'}</span>
+        </button>
+
+        {/* Data Import / Export Button */}
+        <button
+          onClick={() => setIsImportExportOpen(true)}
+          className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+          title="Import or Export Excel and PDF files"
+        >
+          <FileSpreadsheet className="w-3.5 h-3.5 text-blue-500" />
+          <span>Import / Export</span>
+        </button>
+
         {/* SQLite Database Status Pill */}
         <button
           onClick={() => onNavigate('sqlite')}
-          className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-300 text-xs font-semibold hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors"
+          className="hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
           title="SQLite Database is connected and active. Click to view SQLite Studio."
         >
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
           <Database className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-          <span>SQLite 3 Online</span>
+          <span>SQLite Studio</span>
         </button>
 
         {/* System Date Pill */}
@@ -315,6 +345,12 @@ export const Topbar: React.FC<TopbarProps> = ({
           </div>
         )}
       </div>
+
+      {/* Cloud Synchronization and Vercel Setup Modal */}
+      <CloudSyncModal isOpen={isCloudSyncOpen} onClose={() => setIsCloudSyncOpen(false)} />
+
+      {/* Data Center: Import & Export to Excel and PDF */}
+      <DataImportExportModal isOpen={isImportExportOpen} onClose={() => setIsImportExportOpen(false)} />
     </header>
   );
 };

@@ -244,6 +244,8 @@ export const exportClientsToPDF = (clients: Client[], settings: SystemSettings, 
 export const exportLoansToExcel = (loans: Loan[], clients: Client[]) => {
   const data = loans.map((l) => {
     const c = clients.find((client) => client.id === l.clientId);
+    const totalPayable = (l as any).totalPayable || l.principal;
+    const totalRepaid = (l as any).totalRepaid || 0;
     return {
       'Loan #': l.loanNo,
       'Borrower': c ? `${c.firstName} ${c.lastName}` : `Client #${l.clientId}`,
@@ -256,8 +258,8 @@ export const exportLoansToExcel = (loans: Loan[], clients: Client[]) => {
       'Rate Period': l.ratePeriod,
       'Interest Method': l.interestMethod,
       'Term': `${l.termMonths} ${l.repaymentFrequency}`,
-      'Total Payable': l.totalPayable || l.principal,
-      'Total Repaid': l.totalRepaid || 0,
+      'Total Payable': totalPayable,
+      'Total Repaid': totalRepaid,
       'Application Date': l.applicationDate,
       'Disbursed Date': l.disbursementDate || '-',
       'Maturity Date': l.maturityDate || '-',
@@ -275,6 +277,7 @@ export const exportLoansToPDF = (loans: Loan[], clients: Client[], settings: Sys
   const columns = ['Loan #', 'Borrower', 'Principal', 'Rate', 'Method', 'Term', 'Payable', 'Status'];
   const rows = loans.map((l) => {
     const c = clients.find((client) => client.id === l.clientId);
+    const totalPayable = (l as any).totalPayable || l.principal;
     return [
       l.loanNo,
       c ? `${c.firstName} ${c.lastName}` : `Client #${l.clientId}`,
@@ -282,7 +285,7 @@ export const exportLoansToPDF = (loans: Loan[], clients: Client[], settings: Sys
       `${l.interestRate}% / ${l.ratePeriod}`,
       l.interestMethod.replace('_', ' '),
       `${l.termMonths} ${l.repaymentFrequency}`,
-      formatMoney(l.totalPayable || l.principal),
+      formatMoney(totalPayable),
       l.status,
     ];
   });
@@ -303,7 +306,7 @@ export const exportLoansToPDF = (loans: Loan[], clients: Client[], settings: Sys
       { label: 'Total Loans', value: loans.length.toString() },
       { label: 'Total Disbursed Volume', value: formatMoney(totalPrincipal) },
       { label: 'Active Outstanding Principal', value: formatMoney(totalActive) },
-      { label: 'Pending Approvals', value: loans.filter((l) => l.status === 'Pending_Approval').length.toString() },
+      { label: 'Pending Approvals', value: loans.filter((l) => l.status === 'Pending').length.toString() },
     ],
   });
 };
@@ -316,18 +319,23 @@ export const exportScheduleToPDF = (
   systemDate: string
 ) => {
   const columns = ['#', 'Due Date', 'Principal Due', 'Interest Due', 'Total Due', 'Paid', 'Balance', 'Status'];
-  const rows = schedule.map((s) => [
-    s.installmentNumber,
-    s.dueDate,
-    formatMoney(s.principalDue),
-    formatMoney(s.interestDue),
-    formatMoney(s.totalDue),
-    formatMoney(s.principalPaid + s.interestPaid),
-    formatMoney(s.remainingBalance),
-    s.status,
-  ]);
+  const rows = schedule.map((s) => {
+    const paid = s.principalPaid + s.interestPaid + s.penaltyPaid;
+    const remaining = Math.max(0, s.totalDue - paid);
+    return [
+      s.installmentNo.toString(),
+      s.dueDate,
+      formatMoney(s.principalDue),
+      formatMoney(s.interestDue),
+      formatMoney(s.totalDue),
+      formatMoney(paid),
+      formatMoney(remaining),
+      s.status,
+    ];
+  });
 
   const clientName = client ? `${client.firstName} ${client.lastName}` : `Client #${loan.clientId}`;
+  const totalPayable = (loan as any).totalPayable || loan.principal;
 
   downloadPDFReport({
     title: `Amortization Schedule: Loan #${loan.loanNo}`,
@@ -340,7 +348,7 @@ export const exportScheduleToPDF = (
     summaryCards: [
       { label: 'Loan Principal', value: formatMoney(loan.principal) },
       { label: 'Interest Rate', value: `${loan.interestRate}% (${loan.interestMethod.replace('_', ' ')})` },
-      { label: 'Total Repayable', value: formatMoney(loan.totalPayable || loan.principal) },
+      { label: 'Total Repayable', value: formatMoney(totalPayable) },
       { label: 'Disbursement Date', value: loan.disbursementDate || 'Pending' },
     ],
   });
@@ -367,20 +375,23 @@ export const exportScheduleToExcel = (
     { 'Parameter': 'Maturity Date', 'Value': loan.maturityDate || '-' },
   ];
 
-  const scheduleData = schedule.map((s) => ({
-    'Installment #': s.installmentNumber,
-    'Due Date': s.dueDate,
-    'Principal Due': s.principalDue,
-    'Interest Due': s.interestDue,
-    'Total Due': s.totalDue,
-    'Principal Paid': s.principalPaid,
-    'Interest Paid': s.interestPaid,
-    'Penalty Incurred': s.penaltyIncurred || 0,
-    'Penalty Paid': s.penaltyPaid || 0,
-    'Remaining Balance': s.remainingBalance,
-    'Status': s.status,
-    'Paid Date': s.paidDate || '-',
-  }));
+  const scheduleData = schedule.map((s) => {
+    const paid = s.principalPaid + s.interestPaid + s.penaltyPaid;
+    const remaining = Math.max(0, s.totalDue - paid);
+    return {
+      'Installment #': s.installmentNo,
+      'Due Date': s.dueDate,
+      'Principal Due': s.principalDue,
+      'Interest Due': s.interestDue,
+      'Total Due': s.totalDue,
+      'Principal Paid': s.principalPaid,
+      'Interest Paid': s.interestPaid,
+      'Penalty Charged': s.penaltyCharged || 0,
+      'Penalty Paid': s.penaltyPaid || 0,
+      'Remaining Balance': remaining,
+      'Status': s.status,
+    };
+  });
 
   downloadExcelWorkbook(`amortization_schedule_${loan.loanNo}`, [
     { name: 'Amortization Schedule', data: scheduleData },
@@ -439,8 +450,8 @@ export const exportFullDatabaseToExcel = (state: any) => {
           'Application Date': l.applicationDate,
           'Disbursement Date': l.disbursementDate || '',
           'Maturity Date': l.maturityDate || '',
-          'Total Payable': l.totalPayable || l.principal,
-          'Total Repaid': l.totalRepaid || 0,
+          'Total Payable': (l as any).totalPayable || l.principal,
+          'Total Repaid': (l as any).totalRepaid || 0,
         };
       }),
     });

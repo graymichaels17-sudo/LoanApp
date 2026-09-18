@@ -1105,6 +1105,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addExpense,
         addJournalEntry,
         addUser,
+        bulkImportClients,
+        bulkImportLoans,
         addEmployee,
         updateEmployee,
         addLocation,
